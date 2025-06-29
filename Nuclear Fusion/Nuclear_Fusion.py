@@ -1,336 +1,277 @@
 ﻿import numpy as np
-import pandas as pd  # type: ignore
+np.seterr(divide='raise', invalid='raise', over='raise', under='ignore')
+
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import tkinter as tk
 from tkinter import ttk
-
-try:
-    import mplcursors  # type: ignore
-    MPLCURSORS_AVAILABLE = True
-except ImportError:
-    MPLCURSORS_AVAILABLE = False
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # --- CONSTANTS ---
-kB = 1.602e-16  # J/keV
-sigma_SB = 5.670374419e-8  # W/m^2/K^4
-mu0 = 4 * np.pi * 1e-7  # H/m
-e = 1.602e-19  # C
+keV_to_J = 1.602e-16
+e = 1.602e-19
+mu0 = 4 * np.pi * 1e-7
 
-# --- DEVICE PARAMETERS ---
+# --- DEVICE PARAMETERS (all devices included) ---
 devices = {
     "Tokamak": {
         "n0": 5e19, "T0": 10, "V": 100, "fuel": "DT", "I_p": 1e6, "B0": 5, "R": 2, "a": 0.5,
-        "coil_L": 1e-6, "coil_thickness": 0.1, "vessel_V": 200, "A_wall": 100, "T_cold": 4, "T_hot": 300,
-        "emissivity": 0.2, "k_strut": 0.1, "A_strut": 0.01, "L_strut": 1, "eff_fridge": 0.3,
-        "Z_eff": 1.5, "impurity_frac": 0.01, "alpha_loss_frac": 0.1, "kappa": 1.7,
-        "D": 1.0, "T_edge": 0.1, "P_aux_max": 1e7, "Kp": 1e5, "Ki": 1e-2, "Kd": 1e3
+        "kappa": 1.7, "H_98": 1.0, "impurity": "C", "Z_imp": 6, "Z_eff": 1.5, "impurity_frac": 0.01,
     },
     "ITER": {
         "n0": 1e20, "T0": 20, "V": 840, "fuel": "DT", "I_p": 1.5e6, "B0": 5.3, "R": 6.2, "a": 2,
-        "coil_L": 2e-6, "coil_thickness": 0.2, "vessel_V": 2000, "A_wall": 400, "T_cold": 4, "T_hot": 300,
-        "emissivity": 0.2, "k_strut": 0.1, "A_strut": 0.05, "L_strut": 2, "eff_fridge": 0.3,
-        "Z_eff": 1.5, "impurity_frac": 0.01, "alpha_loss_frac": 0.05, "kappa": 1.7,
-        "D": 1.0, "T_edge": 0.1, "P_aux_max": 5e7, "Kp": 1e5, "Ki": 1e-2, "Kd": 1e3
+        "kappa": 1.7, "H_98": 1.0, "impurity": "W", "Z_imp": 74, "Z_eff": 1.5, "impurity_frac": 0.01,
     },
     "Polaris": {
         "n0": 5e22, "T0": 20, "V": 0.5, "fuel": "DHe3", "I_p": 0, "B0": 10, "R": 0.5, "a": 0.1,
-        "coil_L": 1e-7, "coil_thickness": 0.05, "vessel_V": 1, "A_wall": 2, "T_cold": 20, "T_hot": 300,
-        "emissivity": 0.1, "k_strut": 0.2, "A_strut": 0.005, "L_strut": 0.2, "eff_fridge": 0.1,
-        "Z_eff": 2.0, "impurity_frac": 0.02, "alpha_loss_frac": 0.2, "kappa": 1.0,
-        "D": 0.5, "T_edge": 0.2, "P_aux_max": 1e6, "Kp": 1e4, "Ki": 1e-3, "Kd": 1e2
+        "kappa": 1.0, "H_98": 1.0, "impurity": "C", "Z_imp": 6, "Z_eff": 2.0, "impurity_frac": 0.02,
     },
     "LDX Junior": {
         "n0": 1e19, "T0": 1, "V": 0.014, "fuel": "DD", "I_p": 0, "B0": 0.5, "R": 0.2, "a": 0.05,
-        "coil_L": 1e-7, "coil_thickness": 0.02, "vessel_V": 0.1, "A_wall": 0.5, "T_cold": 20, "T_hot": 300,
-        "emissivity": 0.1, "k_strut": 0.2, "A_strut": 0.001, "L_strut": 0.1, "eff_fridge": 0.1,
-        "Z_eff": 1.2, "impurity_frac": 0.005, "alpha_loss_frac": 0.3, "kappa": 1.0,
-        "D": 0.1, "T_edge": 0.05, "P_aux_max": 1e5, "Kp": 1e3, "Ki": 1e-4, "Kd": 1e1
+        "kappa": 1.0, "H_98": 1.0, "impurity": "C", "Z_imp": 6, "Z_eff": 1.2, "impurity_frac": 0.005,
     },
     "Stellarator": {
         "n0": 2e19, "T0": 8, "V": 30, "fuel": "DT", "I_p": 0, "B0": 3, "R": 1.5, "a": 0.4,
-        "coil_L": 1e-6, "coil_thickness": 0.08, "vessel_V": 60, "A_wall": 20, "T_cold": 4, "T_hot": 300,
-        "emissivity": 0.2, "k_strut": 0.1, "A_strut": 0.005, "L_strut": 0.5, "eff_fridge": 0.3,
-        "Z_eff": 1.3, "impurity_frac": 0.008, "alpha_loss_frac": 0.1, "kappa": 1.7
+        "kappa": 1.7, "H_98": 1.0, "impurity": "C", "Z_imp": 6, "Z_eff": 1.3, "impurity_frac": 0.008,
     },
     "Z-pinch": {
         "n0": 1e21, "T0": 5, "V": 0.01, "fuel": "DT", "I_p": 2e6, "B0": 20, "R": 0.01, "a": 0.005,
-        "coil_L": 1e-8, "coil_thickness": 0.01, "vessel_V": 0.02, "A_wall": 0.1, "T_cold": 20, "T_hot": 300,
-        "emissivity": 0.1, "k_strut": 0.2, "A_strut": 0.0005, "L_strut": 0.01, "eff_fridge": 0.1,
-        "Z_eff": 1.7, "impurity_frac": 0.03, "alpha_loss_frac": 0.2, "kappa": 1.0
+        "kappa": 1.0, "H_98": 1.0, "impurity": "C", "Z_imp": 6, "Z_eff": 1.7, "impurity_frac": 0.03,
     },
     "ICF": {
         "n0": 1e26, "T0": 10, "V": 1e-9, "fuel": "DT", "I_p": 0, "B0": 0, "R": 0.001, "a": 0.0005,
-        "coil_L": 0, "coil_thickness": 0, "vessel_V": 1e-8, "A_wall": 1e-6, "T_cold": 20, "T_hot": 300,
-        "emissivity": 0.1, "k_strut": 0.2, "A_strut": 1e-8, "L_strut": 1e-4, "eff_fridge": 0.1,
-        "Z_eff": 1.1, "impurity_frac": 0.001, "alpha_loss_frac": 0.01, "kappa": 1.0
+        "kappa": 1.0, "H_98": 1.0, "impurity": "C", "Z_imp": 6, "Z_eff": 1.1, "impurity_frac": 0.001,
     }
 }
 
-# --- PHYSICS MODULES ---
-
-def tau_E_ITER98y2(n20, P_tot_MW, R, a, B0, kappa=1.7, M=2.5):
-    """ITER-98(y,2) energy confinement time scaling law for tokamaks."""
-    return 0.0562 * (n20**0.41) * (P_tot_MW**-0.69) * (R**1.97) * (a**0.58) * (B0**0.15) * (kappa**0.78) * (M**0.19)
-
 def sigma_v(T, fuel):
-    """Bosch-Hale fit for reactivity <σv> in m^3/s. T in keV."""
+    T = np.maximum(T, 0.1)
     if fuel == "DT":
-        return 3.68e-18 * (T / 17.6)**(0.3) * np.exp(-((T / 69)**0.8))
+        exponent = -((T / 69)**0.8)
+        exponent = np.clip(exponent, -700, 700)
+        return 3.68e-18 * (T / 17.6)**0.3 * np.exp(exponent)
     elif fuel == "DHe3":
-        return 2.5e-21 * T**(-2/3) * np.exp(-18.8 * T**(-1/3))
+        exponent = -18.8 * T**(-1/3)
+        exponent = np.clip(exponent, -700, 700)
+        return 2.5e-21 * T**(-2/3) * np.exp(exponent)
     elif fuel == "DD":
-        return 1.6e-22 * T**(-2/3) * np.exp(-18.76 * T**(-1/3))
+        exponent = -18.76 * T**(-1/3)
+        exponent = np.clip(exponent, -700, 700)
+        return 1.6e-22 * T**(-2/3) * np.exp(exponent)
     else:
         return 0.0
 
 def fusion_energy(fuel):
-    """Energy per reaction in Joules."""
     if fuel == "DT": return 17.6e6 * e
     elif fuel == "DHe3": return 18.3e6 * e
     elif fuel == "DD": return 3.65e6 * e
     else: return 0.0
 
-def compute_bremsstrahlung(n_e, T_keV, V, Z_eff=1.0):
-    """Relativistic Bremsstrahlung loss (W)."""
-    return 1.69e-38 * Z_eff * n_e**2 * T_keV**0.5 * V
+def P_brem(n, T, Z_eff):
+    return 1.69e-38 * Z_eff * n**2 * np.sqrt(T)
 
-def compute_impurity_radiation(n, T, V, Z_eff, impurity_frac):
-    """Estimate impurity radiation loss (W)."""
-    C_imp = 1e-38  # Placeholder, replace with OPEN-ADAS for high fidelity
-    return C_imp * Z_eff**3 * impurity_frac * n**2 * V
+def P_line(n, T, Z_imp, impurity_frac):
+    return 1e-37 * Z_imp**2 * impurity_frac * n**2 * np.exp(-T/10)
 
-def cooling_function(T, Z_imp):
-    """Placeholder for OPEN-ADAS cooling function."""
-    return 1e-34 * (Z_imp**2) * np.exp(-T/10)
+def D_gyrobohm(T, B):
+    return 0.1 * (T**1.5) / (B + 1e-6)
 
-def compute_synchrotron(n_e, T_keV, B, R, a, alpha_r=0.1):
-    """Trubnikov synchrotron loss (W)."""
-    tau = 5.0 * a * T_keV**2 * B / (R * n_e)
-    return 6.21e-34 * T_keV**4.5 * B**2 * R * a * n_e * (1 - np.exp(-tau)) / (1 - alpha_r * np.exp(-tau))
+# --- Live 1D Transport Model ---
+class LiveSim:
+    def __init__(self, params, n_r=30, dt=0.1):
+        self.params = params
+        self.a = params["a"]
+        self.R = params["R"]
+        self.B = params["B0"]
+        self.fuel = params["fuel"]
+        self.Z_eff = params["Z_eff"]
+        self.Z_imp = params["Z_imp"]
+        self.impurity_frac = params["impurity_frac"]
+        self.n_r = n_r
+        self.dt = dt
+        self.r = np.linspace(0, self.a, n_r)
+        self.dr = self.r[1] - self.r[0]
+        self.T = np.ones(n_r) * params["T0"] * (1 - (self.r/self.a)**2 * 0.8)
+        self.n = np.ones(n_r) * params["n0"]
+        self.time = [0.0]
+        self.T_central = [self.T[0]]
+        self.T_edge = [self.T[-1]]
+        self.n_central = [self.n[0]]
+        self.n_edge = [self.n[-1]]
+        self.P_fusion_total = [0.0]
 
-def eta_spitzer(T):
-    """Spitzer resistivity (Ohm*m) for fully ionized plasma, T in keV."""
-    Z = 1
-    ln_Lambda = 17
-    return 1.65e-9 * Z * ln_Lambda / (T**(3/2))
+    def step(self):
+        D = D_gyrobohm(self.T, self.B)
+        chi = np.clip(D.copy(), 0, 1e3)  # Cap chi to prevent runaway
+        sv = sigma_v(self.T, self.fuel)
+        E_fus = fusion_energy(self.fuel)
+        if self.fuel == "DT":
+            n_D = n_T = self.n / 2
+            P_fusion = n_D * n_T * sv * E_fus
+            f_alpha = 0.2
+        else:
+            P_fusion = 0.25 * self.n**2 * sv * E_fus
+            f_alpha = 0.0
+        dV = 2 * np.pi * self.R * self.r * self.dr
+        self.P_fusion_total.append(np.sum(P_fusion * dV))
+        P_alpha = f_alpha * P_fusion
+        P_brem_arr = P_brem(self.n, self.T, self.Z_eff)
+        P_line_arr = P_line(self.n, self.T, self.Z_imp, self.impurity_frac)
+        P_rad = P_brem_arr + P_line_arr
 
-def compute_ohmic_heating(T, I_p):
-    """Ohmic heating (W) for tokamaks/stellarators."""
-    eta = eta_spitzer(T)
-    return eta * I_p**2
+        n_new = self.n.copy()
+        for i in range(1, self.n_r-1):
+            n_new[i] = self.n[i] + self.dt * (
+                (D[i+1]*(self.n[i+1]-self.n[i])/self.dr - D[i]*(self.n[i]-self.n[i-1])/self.dr) / self.dr
+            )
+        n_new[0] = n_new[1]
+        n_new[-1] = n_new[-2]
 
-def compute_tau_E(device, params, n, T, P_heat, B, R, a):
-    """Confinement time (s) using scaling laws."""
-    if device in ["Tokamak", "ITER"]:
-        n20 = n / 1e20
-        P_MW = max(P_heat / 1e6, 1e-3)
-        return tau_E_ITER98y2(n20, P_MW, R, a, B, params.get('kappa', 1.7))
-    elif device == "Stellarator":
-        # ISS04 scaling (placeholder)
-        return params.get("tau_E", 0.5)
-    elif device in ["Z-pinch", "Polaris"]:
-        m_i = 2 * 1.67e-27  # D-T ion mass
-        v_A = B / np.sqrt(mu0 * n * m_i)
-        return R / v_A
-    elif device == "ICF":
-        return 1e-9
-    else:
-        return params.get("tau_E", 1.0)
+        T_new = self.T.copy()
+        for i in range(1, self.n_r-1):
+            T_new[i] = self.T[i] + self.dt * (
+                (chi[i+1]*(self.T[i+1]-self.T[i])/self.dr - chi[i]*(self.T[i]-self.T[i-1])/self.dr) / self.dr
+                + (P_alpha[i] - P_rad[i]) * self.dt / (1.5 * self.n[i] * keV_to_J)
+            )
+        T_new[0] = T_new[1]
+        T_new[-1] = T_new[-2]
 
-def compute_radiation(n_e, T, V, B, R, a, f_imp, Z_imp, Z_eff, alpha_r=0.1):
-    P_brem = compute_bremsstrahlung(n_e, T, V, Z_eff)
-    P_synch = compute_synchrotron(n_e, T, B, R, a, alpha_r)
-    P_line = n_e**2 * f_imp * cooling_function(T, Z_imp) * V
-    return P_brem + P_synch + P_line
+        # Cap temperature to prevent runaway
+        T_new = np.clip(T_new, 1e-3, 1e3)
+        n_new = np.clip(n_new, 1e-10, 1e30)
 
-def check_stability(device, params, n, T, I_p, B):
-    if device == "Tokamak":
-        beta = (2 * mu0 * n * kB * T) / B**2
-        beta_lim = 0.028 * I_p / (params['a'] * B)
-        if beta > beta_lim:
-            return "Disrupt: Beta limit"
-        n_G = (I_p / 1e6) / (np.pi * params['a']**2) * 1e20
-        if n > n_G:
-            return "Disrupt: Density limit"
-        q = 5 * params['a']**2 * B / (params['R'] * I_p)
-        if q < 2:
-            return "Disrupt: Kink instability"
-    return "Stable"
+        # Check for numerical instability
+        if not np.all(np.isfinite(T_new)) or not np.all(np.isfinite(n_new)):
+            print("Numerical instability detected: T_new or n_new contains NaN or Inf. Skipping update.")
+            return
 
-def compute_plasma_step(device, params, state, dt):
-    """Advance plasma state by one time step."""
-    n, T, W = state["n"], state["T"], state["W"]
-    fuel = params["fuel"]
-    V = params["V"]
-    I_p = params["I_p"]
-    B = params["B0"]
-    R = params["R"]
-    a = params["a"]
-    Z_eff = params["Z_eff"]
-    impurity_frac = params["impurity_frac"]
-    alpha_loss_frac = params["alpha_loss_frac"]
-    kappa = params.get("kappa", 1.7)
+        self.n = n_new
+        self.T = T_new
+        self.time.append(self.time[-1] + self.dt)
+        self.T_central.append(self.T[0])
+        self.T_edge.append(self.T[-1])
+        self.n_central.append(self.n[0])
+        self.n_edge.append(self.n[-1])
 
-    # Reactivity and fusion power
-    sv = sigma_v(T, fuel)
-    E_fus = fusion_energy(fuel)
-    if fuel == "DT":
-        n_D = n_T = n / 2
-        P_fusion = n_D * n_T * sv * E_fus * V
-        f_alpha = 0.2
-    else:
-        P_fusion = 0.25 * n**2 * sv * E_fus * V
-        f_alpha = 0.0
-    P_alpha = f_alpha * P_fusion * (1 - alpha_loss_frac)
+    def get_results(self):
+        return {
+            "r": self.r, "T": self.T, "n": self.n,
+            "T_central": np.array(self.T_central), "T_edge": np.array(self.T_edge),
+            "n_central": np.array(self.n_central), "n_edge": np.array(self.n_edge),
+            "P_fusion_total": np.array(self.P_fusion_total),
+            "time": np.array(self.time)
+        }
 
-    # Ohmic heating
-    P_ohm = compute_ohmic_heating(T, I_p) if I_p > 0 else 0.0
-    P_aux = 0.0  # No auxiliary heating in this demo
+# --- Tkinter UI and Live Update ---
+root = tk.Tk()
+root.title("Fusion Reactor 1D Simulation (Live)")
+notebook = ttk.Notebook(root)
+notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
-    # Confinement time
-    P_heat = P_alpha + P_ohm + P_aux
-    tau_E = compute_tau_E(device, params, n, T, P_heat, B, R, a)
+# Initialize live simulators for all devices
+sims = {dev: LiveSim(params) for dev, params in devices.items()}
 
-    # Losses
-    P_cond = 3 * n * kB * T * V / tau_E
-    P_rad_brem = compute_bremsstrahlung(n, T, V, Z_eff)
-    P_rad_imp = compute_impurity_radiation(n, T, V, Z_eff, impurity_frac)
-    P_rad = P_rad_brem + P_rad_imp
-    P_synch = compute_synchrotron(n, T, B, R, a)
-    P_loss = P_cond + P_rad + P_synch
+# --- Home Tab: Fusion Power Output with Sticky Note ---
+home_tab = ttk.Frame(notebook)
+notebook.add(home_tab, text="Home: Fusion Power Output")
 
-    # Energy balance
-    dW_dt = P_alpha + P_ohm + P_aux - P_loss
-    W_new = W + dW_dt * dt
-    T_new = max(W_new / (3 * n * kB * V), 0.01)
+# Sticky note label
+sticky_label = tk.Label(home_tab, text="", font=("Segoe UI", 12), bg="#ffffcc", anchor="w", justify="left", relief="solid", bd=2)
+sticky_label.pack(fill=tk.X, padx=10, pady=5)
 
-    # Fuel burn-up (for long pulses)
-    if fuel == "DT":
-        dn_dt = -0.5 * (n/2) * (n/2) * sv
-        n_new = n + dn_dt * dt
-    else:
-        n_new = n
+fig3, ax3 = plt.subplots(figsize=(8, 5), dpi=100)
+lines_Pfusion = {}
+for dev, sim in sims.items():
+    res = sim.get_results()
+    (lines_Pfusion[dev],) = ax3.plot(res["time"], res["P_fusion_total"], label=dev)
+ax3.set_title("Total Fusion Power Output vs Time")
+ax3.set_xlabel("Time (s)")
+ax3.set_ylabel("Fusion Power (W)")
+ax3.legend()
+fig3.tight_layout()
+canvas3 = FigureCanvasTkAgg(fig3, master=home_tab)
+canvas3.draw()
+canvas3.get_tk_widget().pack(fill=tk.BOTH, expand=1)
 
-    # Q and net power
-    Q = P_fusion / (P_ohm + P_aux) if (P_ohm + P_aux) > 0 else 0.0
-    P_net = P_fusion - P_loss
+# --- Central/Edge Evolution Tab ---
+evol_tab = ttk.Frame(notebook)
+notebook.add(evol_tab, text="Central/Edge Evolution")
+fig, axs = plt.subplots(2, 1, figsize=(8, 7), dpi=100)
+lines_Tc, lines_Te, lines_nc, lines_ne = {}, {}, {}, {}
+for dev, sim in sims.items():
+    res = sim.get_results()
+    (lines_Tc[dev],) = axs[0].plot(res["time"], res["T_central"], label=f"{dev} (center)")
+    (lines_Te[dev],) = axs[0].plot(res["time"], res["T_edge"], '--', label=f"{dev} (edge)")
+    (lines_nc[dev],) = axs[1].plot(res["time"], res["n_central"], label=f"{dev} (center)")
+    (lines_ne[dev],) = axs[1].plot(res["time"], res["n_edge"], '--', label=f"{dev} (edge)")
+axs[0].set_title("Central/Edge Temperature Evolution")
+axs[0].set_ylabel("T (keV)")
+axs[0].legend()
+axs[1].set_title("Central/Edge Density Evolution")
+axs[1].set_ylabel("n (m^-3)")
+axs[1].set_xlabel("Time (s)")
+axs[1].legend()
+fig.tight_layout()
+canvas = FigureCanvasTkAgg(fig, master=evol_tab)
+canvas.draw()
+canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1)
 
-    return {
-        "n": n_new, "T": T_new, "W": W_new, "P_fusion": P_fusion, "P_alpha": P_alpha,
-        "P_ohm": P_ohm, "P_cond": P_cond, "P_rad": P_rad, "P_synch": P_synch,
-        "Q": Q, "P_net": P_net, "tau_E": tau_E
-    }
+# --- Final Profiles Tab ---
+prof_tab = ttk.Frame(notebook)
+notebook.add(prof_tab, text="Final Profiles")
+fig2, axs2 = plt.subplots(1, 2, figsize=(10, 5), dpi=100)
+lines_Tprof, lines_nprof = {}, {}
+for dev, sim in sims.items():
+    res = sim.get_results()
+    (lines_Tprof[dev],) = axs2[0].plot(res["r"], res["T"], label=dev)
+    (lines_nprof[dev],) = axs2[1].plot(res["r"], res["n"], label=dev)
+axs2[0].set_title("Final Temperature Profile")
+axs2[0].set_xlabel("r (m)")
+axs2[0].set_ylabel("T (keV)")
+axs2[0].legend()
+axs2[1].set_title("Final Density Profile")
+axs2[1].set_xlabel("r (m)")
+axs2[1].set_ylabel("n (m^-3)")
+axs2[1].legend()
+fig2.tight_layout()
+canvas2 = FigureCanvasTkAgg(fig2, master=prof_tab)
+canvas2.draw()
+canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=1)
 
-def compute_cryo_losses(params):
-    """Compute total cryogenic heat load and wall-plug power."""
-    T_avg = (params["T_hot"] + params["T_cold"]) / 2
-    k_strut = params["k_strut"] * (1 + 0.001 * T_avg)
-    Q_cond = k_strut * params["A_strut"] / params["L_strut"] * (params["T_hot"] - params["T_cold"])
-    Q_rad = params["emissivity"] * sigma_SB * params["A_wall"] * (params["T_hot"]**4 - params["T_cold"]**4)
-    Q_total = Q_cond + Q_rad
-    COP_Carnot = params["T_cold"] / (params["T_hot"] - params["T_cold"])
-    COP_real = params["eff_fridge"] * COP_Carnot
-    wallplug_power = Q_total / COP_real if COP_real > 0 else 0.0
-    return Q_cond, Q_rad, Q_total, COP_real, wallplug_power
+# --- Live Update Loop ---
+def live_update():
+    sticky_text = "Average Fusion Power Output (W):\n"
+    for dev, sim in sims.items():
+        for _ in range(5):  # Advance by 5 steps per GUI update for speed
+            sim.step()
+        res = sim.get_results()
+        # Update fusion power plot (Home tab)
+        lines_Pfusion[dev].set_data(res["time"], res["P_fusion_total"])
+        ax3.set_xlim(0, res["time"][-1])
+        # Update sticky note
+        avg_power = np.mean(res["P_fusion_total"])
+        sticky_text += f"{dev}: {avg_power:.3e} W\n"
+        # Update evolution plots
+        lines_Tc[dev].set_data(res["time"], res["T_central"])
+        lines_Te[dev].set_data(res["time"], res["T_edge"])
+        lines_nc[dev].set_data(res["time"], res["n_central"])
+        lines_ne[dev].set_data(res["time"], res["n_edge"])
+        axs[0].set_xlim(0, res["time"][-1])
+        axs[1].set_xlim(0, res["time"][-1])
+        # Update profiles
+        lines_Tprof[dev].set_data(res["r"], res["T"])
+        lines_nprof[dev].set_data(res["r"], res["n"])
+        # Print debug info
+        print(f"{dev}: t={res['time'][-1]:.2f}s, T0={res['T_central'][-1]:.2f}keV, n0={res['n_central'][-1]:.2e}, Pfus={res['P_fusion_total'][-1]:.2e}W")
+    sticky_label.config(text=sticky_text.strip())
+    axs[0].relim(); axs[0].autoscale_view()
+    axs[1].relim(); axs[1].autoscale_view()
+    axs2[0].relim(); axs2[0].autoscale_view()
+    axs2[1].relim(); axs2[1].autoscale_view()
+    ax3.relim(); ax3.autoscale_view()
+    canvas.draw()
+    canvas2.draw()
+    canvas3.draw()
+    root.after(100, live_update)  # update every 100 ms
 
-def compute_magnetics(params, I_p):
-    """Compute magnetic field, stored energy, and coil stress."""
-    B = params["B0"]
-    R = params["R"]
-    L = params["coil_L"]
-    thickness = params["coil_thickness"]
-    E_mag = 0.5 * L * I_p**2
-    hoop_stress = B**2 * R / (mu0 * thickness) if thickness > 0 else 0.0
-    return B, E_mag, hoop_stress
-
-def compute_vacuum(params, p, Q_load=1e-6, S_pump=1.0):
-    """Vacuum pressure evolution (Pa)."""
-    V_vessel = params["vessel_V"]
-    dp_dt = (Q_load - S_pump * p) / V_vessel
-    return p + dp_dt * dt
-
-def compute_structural(params, T, T0):
-    """Thermal expansion and stress."""
-    alpha = 1e-5  # 1/K
-    L0 = params["L_strut"]
-    Delta_L = alpha * L0 * (T - T0)
-    return Delta_L
-
-def compute_diagnostics(device, state):
-    """Stub for diagnostics (e.g., Mirnov coil, neutron yield)."""
-    if device == "ICF":
-        return state["P_fusion"] * 1e-8
-    return 0.0
-
-# --- MAIN SIMULATION LOOP ---
-dt = 0.01
-t_max = 10.0
-time = np.arange(0, t_max + dt, dt)
-
-results = {dev: {"T": [], "P_fusion": [], "Q": [], "P_net": [], "wallplug": [], "coil_stress": [], "pressure": [], "yield": []} for dev in devices}
-final_states = {}
-
-for dev, params in devices.items():
-    n = params["n0"]
-    T = params["T0"]
-    V = params["V"]
-    W = 3 * n * (T * kB) * V
-    I_p = params["I_p"]
-    p = 1e-3  # Initial vacuum pressure (Pa)
-    state = {"n": n, "T": T, "W": W}
-    for t in time:
-        state = compute_plasma_step(dev, params, state, dt)
-        _, _, _, _, wallplug = compute_cryo_losses(params)
-        _, _, coil_stress = compute_magnetics(params, I_p)
-        p = compute_vacuum(params, p)
-        diag = compute_diagnostics(dev, state)
-        results[dev]["T"].append(state["T"])
-        results[dev]["P_fusion"].append(state["P_fusion"])
-        results[dev]["Q"].append(state["Q"])
-        results[dev]["P_net"].append(state["P_net"])
-        results[dev]["wallplug"].append(wallplug)
-        results[dev]["coil_stress"].append(coil_stress)
-        results[dev]["pressure"].append(p)
-        results[dev]["yield"].append(diag)
-    final_states[dev] = {
-        "T_final": state["T"], "P_fusion_final": state["P_fusion"], "Q_final": state["Q"],
-        "P_net_final": state["P_net"], "wallplug_final": wallplug, "coil_stress_final": coil_stress,
-        "pressure_final": p, "yield_final": diag
-    }
-
-# --- VISUALIZATION ---
-import matplotlib.gridspec as gridspec
-
-fig = plt.figure(constrained_layout=True, figsize=(18, 16))
-gs = gridspec.GridSpec(4, 2, figure=fig)
-
-plot_list = [
-    ("T", "Plasma Temperature (keV)"),
-    ("P_fusion", "Fusion Power (W)"),
-    ("Q", "Fusion Gain Q"),
-    ("P_net", "Net Power (W)"),
-    ("wallplug", "Refrigerator Wallplug Power (W)"),
-    ("coil_stress", "Coil Hoop Stress (Pa)"),
-    ("pressure", "Vessel Pressure (Pa)"),
-    ("yield", "ICF Neutron Yield (arb)")
-]
-
-for i, (key, label) in enumerate(plot_list):
-    ax = fig.add_subplot(gs[i//2, i%2])
-    for dev in devices:
-        ax.plot(time, results[dev][key], label=dev)
-    ax.set_title(label)
-    ax.set_xlabel("Time (s)")
-    ax.grid(True, linestyle='--', alpha=0.6)
-    if i == 0:
-        ax.legend(fontsize=8)
-    if MPLCURSORS_AVAILABLE:
-        mplcursors.cursor(ax.get_lines(), hover=True)
-
-plt.tight_layout()
-plt.show()
-
-# --- SUMMARY TABLE ---
-df = pd.DataFrame(final_states).T
-print(df)
+live_update()
+root.mainloop()
